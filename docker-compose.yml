@@ -1,0 +1,177 @@
+services:
+
+  mariadb:
+    image: 'mariadb:11.4'
+    container_name: moodle-db
+    restart: unless-stopped
+    environment:
+      - MYSQL_ROOT_PASSWORD=${SERVICE_PASSWORD_ROOT}
+      - MYSQL_DATABASE=${MOODLE_DB_NAME}
+      - MYSQL_USER=${MOODLE_DB_USER}
+      - MYSQL_PASSWORD=${MOODLE_DB_PASSWORD}
+      - MARIADB_CHARACTER_SET=utf8mb4
+      - MARIADB_COLLATE=utf8mb4_unicode_ci
+    volumes:
+      - 'mariadb-data:/var/lib/mysql'
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost",
+             "-u", "root", "-p${SERVICE_PASSWORD_ROOT}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - moodle_net
+
+  redis:
+    image: 'redis:7.4-alpine'
+    container_name: moodle-redis
+    restart: unless-stopped
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD_MOODLE}
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+      --save ""
+    volumes:
+      - 'redis-data:/data'
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD_MOODLE}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - moodle_net
+
+  moodle:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: moodle-oficial:5.1
+    container_name: moodle-app
+    restart: unless-stopped
+    depends_on:
+      mariadb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    expose:
+      - '80'
+    environment:
+      - MOODLE_DB_HOST=mariadb
+      - MOODLE_DB_NAME=${MOODLE_DB_NAME}
+      - MOODLE_DB_USER=${MOODLE_DB_USER}
+      - MOODLE_DB_PASSWORD=${MOODLE_DB_PASSWORD}
+      - MOODLE_ADMIN_USER=admin
+      - MOODLE_ADMIN_PASS=${MOODLE_ADMIN_PASS}
+      - MOODLE_ADMIN_EMAIL=${MOODLE_ADMIN_EMAIL}
+      - MOODLE_SITE_NAME=Learn Social Studies
+      - MOODLE_SITE_SHORTNAME=LSS
+      - MOODLE_HOST=learnsocialstudies.com
+      - REDIS_HOST=moodle-redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD_MOODLE}
+      - R2_ACCOUNT_ID=${R2_ACCOUNT_ID}
+      - R2_BUCKET=${R2_BUCKET}
+      - R2_ACCESS_KEY_ID=${R2_ACCESS_KEY_ID}
+      - R2_SECRET_ACCESS_KEY=${R2_SECRET_ACCESS_KEY}
+      - R2_ENDPOINT=${R2_ENDPOINT}
+      - R2_MEDIA_DOMAIN=${R2_MEDIA_DOMAIN}
+    volumes:
+      - 'moodle-data:/var/www/html'
+      - 'moodledata-data:/var/moodledata'
+    healthcheck:
+      test: ["CMD", "php", "-r",
+             "exit(file_exists('/var/www/html/config.php') ? 0 : 1);"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 180s
+    networks:
+      - moodle_net
+      - coolify
+    labels:
+      - traefik.enable=true
+      - 'traefik.http.routers.moodle.rule=Host(`learnsocialstudies.com`) || Host(`www.learnsocialstudies.com`)'
+      - traefik.http.routers.moodle.entrypoints=https
+      - traefik.http.routers.moodle.tls=true
+      - traefik.http.services.moodle.loadbalancer.server.port=80
+
+  moodle-cron:
+    image: moodle-oficial:5.1
+    container_name: moodle-cron
+    restart: unless-stopped
+    entrypoint: /bin/bash
+    command: >
+      -c "while true;
+          do php /var/www/html/admin/cli/cron.php --quiet;
+          sleep 60; done"
+    environment:
+      - MOODLE_DB_HOST=mariadb
+      - MOODLE_DB_NAME=${MOODLE_DB_NAME}
+      - MOODLE_DB_USER=${MOODLE_DB_USER}
+      - MOODLE_DB_PASSWORD=${MOODLE_DB_PASSWORD}
+    volumes:
+      - 'moodle-data:/var/www/html'
+      - 'moodledata-data:/var/moodledata'
+    depends_on:
+      moodle:
+        condition: service_healthy
+    networks:
+      - moodle_net
+
+  adminer:
+    image: 'adminer:latest'
+    container_name: moodle-adminer
+    restart: unless-stopped
+    expose:
+      - '8080'
+    environment:
+      ADMINER_DEFAULT_SERVER: mariadb
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    networks:
+      - moodle_net
+      - coolify
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.adminer.rule=Host(`sql.socialstudies.cloud`)
+      - traefik.http.routers.adminer.entrypoints=https
+      - traefik.http.routers.adminer.tls=true
+      - traefik.http.services.adminer.loadbalancer.server.port=8080
+
+  filebrowser:
+    image: 'filebrowser/filebrowser:latest'
+    container_name: moodle-filebrowser
+    restart: unless-stopped
+    expose:
+      - '80'
+    volumes:
+      - 'moodle-data:/srv/moodle:rw'
+      - 'moodledata-data:/srv/moodledata:rw'
+    networks:
+      - moodle_net
+      - coolify
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.filebrowser.rule=Host(`files.socialstudies.cloud`)
+      - traefik.http.routers.filebrowser.entrypoints=https
+      - traefik.http.routers.filebrowser.tls=true
+      - traefik.http.services.filebrowser.loadbalancer.server.port=80
+
+volumes:
+  mariadb-data:
+    driver: local
+  moodle-data:
+    driver: local
+  moodledata-data:
+    driver: local
+  redis-data:
+    driver: local
+
+networks:
+  moodle_net:
+    driver: bridge
+  coolify:
+    external: true
