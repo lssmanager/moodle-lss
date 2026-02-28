@@ -2,12 +2,12 @@ FROM php:8.3-apache
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git unzip curl libzip-dev libjpeg-dev libpng-dev \
-    libfreetype6-dev libicu-dev libxml2-dev default-mysql-client \
+    libfreetype6-dev libicu-dev libxml2-dev \
     libonig-dev libxslt-dev libpq-dev libldap2-dev \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-configure ldap \
     && docker-php-ext-install \
-        mysqli pdo pdo_mysql zip gd intl soap exif \
+        pdo_pgsql pgsql zip gd intl soap exif \
         opcache mbstring xml xsl ldap \
     && pecl install redis \
     && docker-php-ext-enable redis \
