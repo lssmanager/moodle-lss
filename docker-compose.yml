@@ -56,6 +56,7 @@ services:
     environment:
       MOODLE_DB_HOST: postgres
       MOODLE_DB_TYPE: pgsql
+      MOODLE_DB_PORT: "5432"
       MOODLE_DB_NAME: ${MOODLE_DB_NAME}
       MOODLE_DB_USER: ${MOODLE_DB_USER}
       MOODLE_DB_PASSWORD: ${MOODLE_DB_PASSWORD}
@@ -106,6 +107,7 @@ services:
     environment:
       MOODLE_DB_HOST: postgres
       MOODLE_DB_TYPE: pgsql
+      MOODLE_DB_PORT: "5432"
       MOODLE_DB_NAME: ${MOODLE_DB_NAME}
       MOODLE_DB_USER: ${MOODLE_DB_USER}
       MOODLE_DB_PASSWORD: ${MOODLE_DB_PASSWORD}
